@@ -133,23 +133,31 @@ class PreProcess:
 
 
 class NaiveBayesKGrams:
-    def __init__(self, k, ocd, trainfiles, testfiles, priors, maybemore=None):
+    def __init__(self, k, ocd, traindata, testdata, priors, maybemore=None):
+        print("testing for {0}-grams.".format(k))
         self.k = k
         self.ocd = ocd
-        self.trainfiles, self.traincats = trainfiles
-        self.testfiles, self.testcats= testfiles
-        self.trainkgramfiles = self.makekgram(trainfiles)
-        self.size_voc = self.calc_size_voc(trainfiles)
+        self.trainfiles, self.traincats = traindata
+        self.testfiles, self.testcats = testdata
+        self.trainkgramfiles = self.makekgram(self.trainfiles)
+        self.size_voc = self.calc_size_voc(self.trainfiles)
         self.rw_cat = self.count_running_words()
-        self.testkgramfiles = self.makekgram(testfiles, True)
+        self.testkgramfiles = self.makekgram(self.testfiles, True)
         self.priors = priors
         self.occ_cat = self.count_occ_in_cat()
+        self.test_score_data()
+
+    def test_score_data(self):
+        tot_correct = 0
+        for id_, file_ in enumerate(tqdm(self.testkgramfiles)):
+            if self.calc_cat_prob_for_test_file(id_) == testcat[id_]:
+                tot_correct += 1
+        print("From the {0} test files, {1} were classified correctly".format(len(self.testfiles), tot_correct))
 
     def calc_size_voc(self, files):
         voc = set([])
         for file_ in files:
             for kgram in file_:
-                print(kgram)
                 voc.add(str(kgram))
         return len(voc)
 
@@ -171,15 +179,15 @@ class NaiveBayesKGrams:
             i = 1000
         for file_ in tqdm(files):
             i += 1
-            fname = fname + str(i) + ".pkl"
+            kgramfname = fname + str(i) + ".pkl"
             try:
-                kgramfile = pickle.load(open(fname, 'rb'))
+                kgramfile = pickle.load(open(kgramfname, 'rb'))
             except:
                 kgramfile = []
-                for i in tqdm(range(len(file_)-self.k)):
-                    kgram = file_[i:i+self.k]
+                for idx in range(len(file_)-self.k):
+                    kgram = file_[idx:idx+self.k]
                     kgramfile.append(kgram)
-                pickle.dump(kgramfile, open(fname, 'wb'))
+                pickle.dump(kgramfile, open(kgramfname, 'wb'))
             kgramfiles.append(kgramfile)
         return kgramfiles
 
@@ -224,7 +232,7 @@ class NaiveBayesKGrams:
             cat_prob = 1
             e = 0
             for kgram in self.testkgramfiles[file_id]:
-                term_prob = (self.occ_in_cat(kgram, cat)) / \
+                term_prob = (self.occ_in_cat(str(kgram), str(cat))) / \
                             (self.rw_cat[cat] + self.size_voc)
                 # times hundred in order to not have a too low value for p.
                 cat_prob = cat_prob * term_prob
