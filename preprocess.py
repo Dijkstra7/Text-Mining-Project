@@ -165,7 +165,8 @@ class NaiveBayesKGrams:
     def calc_size_voc(self, files):
         voc = set([])
         for file_ in files:
-            for kgram in file_:
+            for idx in range(len(file_)-self.k):
+                kgram = file_[idx:idx+k]
                 voc.add(str(kgram))
         return len(voc)
 
@@ -174,9 +175,9 @@ class NaiveBayesKGrams:
         for id_, cat in enumerate(self.traincats):
             ca = cat[1]
             if ca in running_words_per_cat:
-                running_words_per_cat[ca] += len(self.trainkgramfiles)
+                running_words_per_cat[ca] += len(self.trainkgramfiles[id_])
             else:
-                running_words_per_cat[ca] = len(self.trainkgramfiles)
+                running_words_per_cat[ca] = len(self.trainkgramfiles[id_])
         return running_words_per_cat
 
     def makekgram(self, files, files_are_for_testing=False):
@@ -498,8 +499,8 @@ def testNB(pre, nb, testing=False):
 
 def testk(k, p, n, trainfiles, testfiles):
     nbk = NaiveBayesKGrams(k, p[k - 1], trainfiles, testfiles, n.priors)
-    #nbk.test_score_data()
-    #nbk.train_score_data()
+    nbk.test_score_data()
+    nbk.train_score_data()
     print(nbk.testprobs)
     return nbk
 
@@ -527,9 +528,10 @@ def probs_for_test_all_kgrams(rw_cats, all_test_kgrams, occ_cats, size_vocs, fil
             termprobs = []
             for i in range(len(size_vocs)):
                 prob = term_prob_for_test_file(rw_cats[i], cat, kgram,
-                                                    occ_cats[i], size_vocs[i])
+                                               occ_cats[i], size_vocs[i])
                 termprobs.append(prob)
-            term_prob = max(termprobs)
+            #term_prob = max(termprobs) #use to find max k-gram like f-gram
+            term_prob = sum(termprobs)/len(termprobs)
             cat_prob = cat_prob * term_prob
             while cat_prob < 0.1:
                 cat_prob *= 10
@@ -592,15 +594,20 @@ if __name__ == "__main__":
     rw_cats = []
     occ_cats = []
     all_train_kgrams = []
+    all_test_kgrams = []
     nbtotalk = None
     for k in range(1,11):
-        nbk = testk(k, ocds, nb, (trainfiles, unfolded(traincat)), (testfiles, unfolded(testcat)))
+        nbk = None
+        nbk = testk(k, ocds, nb, (trainfiles, unfolded(traincat)),
+                    (testfiles, unfolded(testcat)))
         size_vocs.append(nbk.size_voc)
         rw_cats.append(nbk.rw_cat)
         occ_cats.append(nbk.occ_cat)
         all_train_kgrams.append(nbk.trainkgramfiles)
+        all_test_kgrams.append(nbk.testkgramfiles)
         nbtotalk = nbk
     print("Testing what happens at all k-grams")
     test_all_kgrams(rw_cats, occ_cats, all_train_kgrams, size_vocs, unfolded(traincat))
+    test_all_kgrams(rw_cats, occ_cats, all_test_kgrams, size_vocs, unfolded(testcat))
 
 
