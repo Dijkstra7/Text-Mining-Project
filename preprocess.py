@@ -135,6 +135,8 @@ class PreProcess:
 class NaiveBayesKGrams:
     def __init__(self, k, ocd, traindata, testdata, priors, maybemore=None):
         print("testing for {0}-grams.".format(k))
+        self.testprobs = None
+        self.trainprobs = None
         self.k = k
         self.ocd = ocd
         self.trainfiles, self.traincats = traindata
@@ -145,7 +147,6 @@ class NaiveBayesKGrams:
         self.testkgramfiles = self.makekgram(self.testfiles, True)
         self.priors = priors
         self.occ_cat = self.count_occ_in_cat()
-        self.test_score_data()
 
     def test_score_data(self):
         tot_correct = 0
@@ -153,6 +154,13 @@ class NaiveBayesKGrams:
             if self.calc_most_prob_test_cat(id_)[0] == self.testcats[id_][1]:
                 tot_correct += 1
         print("From the {0} test files, {1} were classified correctly".format(len(self.testfiles), tot_correct))
+
+    def train_score_data(self):
+        tot_correct = 0
+        for id_, file_ in enumerate(tqdm(self.trainkgramfiles)):
+            if self.calc_most_prob_train_cat(id_)[0] == self.traincats[id_][1]:
+                tot_correct += 1
+        print("From the {0} train files, {1} were classified correctly".format(len(self.trainfiles), tot_correct))
 
     def calc_size_voc(self, files):
         voc = set([])
@@ -243,6 +251,7 @@ class NaiveBayesKGrams:
                     cat_prob *= 10
                     e -= 1
             probs[cat] = (cat_prob, e)
+        self.testprobs = probs
         return probs
 
     def calc_cat_prob_for_train_file(self, file_id):
@@ -259,6 +268,7 @@ class NaiveBayesKGrams:
                     cat_prob *= 10
                     e -= 1
             probs[cat] = (cat_prob, e)
+        self.trainprobs = probs
         return probs
 
     def occ_in_cat(self, kgram, cat):
@@ -291,6 +301,7 @@ class NaiveBayes:
             to train the data. Ordered by category type.
         :PreProcessing prepro: the class to preprocess the files
         """
+        self.probs = None
         self.cat_ids = cat_ids
         self.priors = self.calc_priors()
         self.cats = self.find_cats()
@@ -416,6 +427,7 @@ class NaiveBayes:
                     cat_prob *= 10
                     e -= 1
             probs[cat] = (cat_prob, e)
+        self.probs = probs
         return probs
 
     def calc_most_probable_cat(self, file_id, testing=False):
@@ -436,8 +448,8 @@ class NaiveBayes:
                     winning_cat = cat
                     p, e = probs[cat]
         ###TESTING
-        if testing:
-            print(probs)
+        # if testing:
+        #     print(probs)
         ###/TESTING
         return winning_cat, p, e
 
@@ -486,6 +498,10 @@ def testNB(pre, nb, testing=False):
 
 def testk(k, p, n, trainfiles, testfiles):
     nbk = NaiveBayesKGrams(k, p[k - 1], trainfiles, testfiles, n.priors)
+    #nbk.test_score_data()
+    #nbk.train_score_data()
+    print(nbk.testprobs)
+    return nbk
 
 
 def unfolded(lst):
@@ -494,6 +510,68 @@ def unfolded(lst):
         for id_ in cat:
             cats.append(id_)
     return cats
+
+
+def occ_in_cat(kgram, cat, occ_cat):
+    if kgram in occ_cat[cat]:
+        return occ_cat[cat][kgram] + 1
+    return 1
+
+
+def probs_for_test_all_kgrams(rw_cats, all_test_kgrams, occ_cats, size_vocs, file_id):
+    probs = {}
+    for cat in rw_cats[0]:
+        cat_prob = 1
+        e = 0
+        for kgram in all_test_kgrams[0][file_id]:
+            termprobs = []
+            for i in range(len(size_vocs)):
+                prob = term_prob_for_test_file(rw_cats[i], cat, kgram,
+                                                    occ_cats[i], size_vocs[i])
+                termprobs.append(prob)
+            term_prob = max(termprobs)
+            cat_prob = cat_prob * term_prob
+            while cat_prob < 0.1:
+                cat_prob *= 10
+                e -= 1
+        probs[cat] = (cat_prob, e)
+    return probs
+
+
+def term_prob_for_test_file(rw_cat, cat, kgram, occ_cat, size_voc):
+    term_prob = (occ_in_cat(kgram, cat, occ_cat)) / \
+                (rw_cat[cat] + size_voc)
+    return term_prob
+
+
+def correct_category_from_probs(idx, probs, test_cat):
+    e = None
+    p = None
+    winning_cat = None
+    for cat in probs:
+        if e is None:
+            p, e = probs[cat]
+            winning_cat = cat
+        elif probs[cat][1] == e:
+            if probs[cat][0] > p:
+                winning_cat = cat
+                p, e = probs[cat]
+        else:
+            if probs[cat][1] > e:
+                winning_cat = cat
+                p, e = probs[cat]
+    correct_cat = test_cat[idx][1]
+    return int(winning_cat==correct_cat)
+
+
+def test_all_kgrams(rw_cats, occ_cats, all_test_kgrams, size_vocs, test_cat):
+    correct = 0
+    for i in tqdm(range(len(all_test_kgrams[0]))):
+        probs = probs_for_test_all_kgrams(rw_cats, all_test_kgrams, occ_cats,
+                                          size_vocs, i)
+        correct += correct_category_from_probs(i, probs, test_cat)
+    print("from the {0} test files, {1} were classified correct".format(len(all_test_kgrams[0]), correct))
+
 
 if __name__ == "__main__":
     # nltk.download()
@@ -506,8 +584,23 @@ if __name__ == "__main__":
     nb = NaiveBayes(traincat, pre)
     trainfiles = pre.all_files[:]
     ocds = nb.norm_freq_ocds[:]
+    # testNB(pre, nb, False)
     nb2 = NaiveBayes(testcat, pre, testing=True, trainnb=nb)
     testfiles = pre.all_files[:]
     # testNB(pre, nb, True)
+    size_vocs = []
+    rw_cats = []
+    occ_cats = []
+    all_train_kgrams = []
+    nbtotalk = None
     for k in range(1,11):
-        testk(k, ocds, nb, (trainfiles, unfolded(traincat)), (testfiles, unfolded(testcat)))
+        nbk = testk(k, ocds, nb, (trainfiles, unfolded(traincat)), (testfiles, unfolded(testcat)))
+        size_vocs.append(nbk.size_voc)
+        rw_cats.append(nbk.rw_cat)
+        occ_cats.append(nbk.occ_cat)
+        all_train_kgrams.append(nbk.trainkgramfiles)
+        nbtotalk = nbk
+    print("Testing what happens at all k-grams")
+    test_all_kgrams(rw_cats, occ_cats, all_train_kgrams, size_vocs, unfolded(traincat))
+
+
