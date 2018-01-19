@@ -150,7 +150,7 @@ class NaiveBayesKGrams:
     def test_score_data(self):
         tot_correct = 0
         for id_, file_ in enumerate(tqdm(self.testkgramfiles)):
-            if self.calc_cat_prob_for_test_file(id_) == testcat[id_]:
+            if self.calc_most_prob_test_cat(id_)[0] == self.testcats[id_][1]:
                 tot_correct += 1
         print("From the {0} test files, {1} were classified correctly".format(len(self.testfiles), tot_correct))
 
@@ -191,8 +191,28 @@ class NaiveBayesKGrams:
             kgramfiles.append(kgramfile)
         return kgramfiles
 
-    def calc_most_prob_cat(self, file_id):
-        probs = self.calc_cat_prob_for_file(file_id)
+    def calc_most_prob_test_cat(self, file_id):
+        probs = self.calc_cat_prob_for_test_file(file_id)
+        e = None
+        p = None
+        winning_cat = None
+        for cat in probs:
+            if e is None:
+                p, e = probs[cat]
+                winning_cat = cat
+            elif probs[cat][1] == e:
+                if probs[cat][0] > p:
+                    winning_cat = cat
+                    p, e = probs[cat]
+            else:
+                if probs[cat][1] > e:
+                    winning_cat = cat
+                    p, e = probs[cat]
+        return winning_cat, p, e
+
+
+    def calc_most_prob_train_cat(self, file_id):
+        probs = self.calc_cat_prob_for_train_file(file_id)
         e = None
         p = None
         winning_cat = None
@@ -215,10 +235,9 @@ class NaiveBayesKGrams:
         for cat in self.rw_cat:
             cat_prob = 1
             e = 0
-            for fgram in self.trainkgramfiles[file_id]:
-                term_prob = (self.occ_in_cat(fgram, cat)) / \
+            for kgram in self.testkgramfiles[file_id]:
+                term_prob = (self.occ_in_cat(kgram, cat)) / \
                             (self.rw_cat[cat] + self.size_voc)
-                # times hundred in order to not have a too low value for p.
                 cat_prob = cat_prob * term_prob
                 while cat_prob < 0.1:
                     cat_prob *= 10
@@ -231,7 +250,7 @@ class NaiveBayesKGrams:
         for cat in self.rw_cat:
             cat_prob = 1
             e = 0
-            for kgram in self.testkgramfiles[file_id]:
+            for kgram in self.trainkgramfiles[file_id]:
                 term_prob = (self.occ_in_cat(str(kgram), str(cat))) / \
                             (self.rw_cat[cat] + self.size_voc)
                 # times hundred in order to not have a too low value for p.
@@ -243,7 +262,7 @@ class NaiveBayesKGrams:
         return probs
 
     def occ_in_cat(self, kgram, cat):
-        """ return occurence in category. Added one for laplace smoothing"""
+        """ return occurrence in category. Added one for laplace smoothing"""
         if kgram in self.occ_cat[cat]:
             return self.occ_cat[cat][kgram] + 1
         return 1
@@ -254,7 +273,7 @@ class NaiveBayesKGrams:
             ca = cat[1]
             if ca not in occ_words_per_cat:
                 occ_words_per_cat[ca] = {}
-            for lkgram in self.trainkgramfiles:
+            for lkgram in self.trainkgramfiles[id_]:
                 kgram = str(lkgram)
                 if kgram in occ_words_per_cat[ca]:
                     occ_words_per_cat[ca][kgram] += 1
@@ -469,6 +488,13 @@ def testk(k, p, n, trainfiles, testfiles):
     nbk = NaiveBayesKGrams(k, p[k - 1], trainfiles, testfiles, n.priors)
 
 
+def unfolded(lst):
+    cats = []
+    for cat in lst:
+        for id_ in cat:
+            cats.append(id_)
+    return cats
+
 if __name__ == "__main__":
     # nltk.download()
     occ_max, count, first = set_start_values()
@@ -482,6 +508,6 @@ if __name__ == "__main__":
     ocds = nb.norm_freq_ocds[:]
     nb2 = NaiveBayes(testcat, pre, testing=True, trainnb=nb)
     testfiles = pre.all_files[:]
-    testNB(pre, nb, True)
+    # testNB(pre, nb, True)
     for k in range(1,11):
-        testk(k, ocds, nb, (trainfiles, traincat), (testfiles, testcat))
+        testk(k, ocds, nb, (trainfiles, unfolded(traincat)), (testfiles, unfolded(testcat)))
